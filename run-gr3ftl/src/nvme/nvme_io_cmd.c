@@ -1,55 +1,3 @@
-//////////////////////////////////////////////////////////////////////////////////
-// nvme_io_cmd.c for Cosmos+ OpenSSD
-// Copyright (c) 2016 Hanyang University ENC Lab.
-// Contributed by Yong Ho Song <yhsong@enc.hanyang.ac.kr>
-//				  Youngjin Jo <yjjo@enc.hanyang.ac.kr>
-//				  Sangjin Lee <sjlee@enc.hanyang.ac.kr>
-//				  Jaewook Kwak <jwkwak@enc.hanyang.ac.kr>
-//
-// This file is part of Cosmos+ OpenSSD.
-//
-// Cosmos+ OpenSSD is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; either version 3, or (at your option)
-// any later version.
-//
-// Cosmos+ OpenSSD is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-// See the GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with Cosmos+ OpenSSD; see the file COPYING.
-// If not, see <http://www.gnu.org/licenses/>.
-//////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////
-// Company: ENC Lab. <http://enc.hanyang.ac.kr>
-// Engineer: Sangjin Lee <sjlee@enc.hanyang.ac.kr>
-//			 Jaewook Kwak <jwkwak@enc.hanyang.ac.kr>
-//
-// Project Name: Cosmos+ OpenSSD
-// Design Name: Cosmos+ Firmware
-// Module Name: NVMe IO Command Handler
-// File Name: nvme_io_cmd.c
-//
-// Version: v1.0.1
-//
-// Description:
-//   - handles NVMe IO command
-//////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////
-// Revision History:
-//
-// * v1.0.1
-//   - header file for buffer is changed from "ia_lru_buffer.h" to "lru_buffer.h"
-//
-// * v1.0.0
-//   - First draft
-//////////////////////////////////////////////////////////////////////////////////
-
-
 #include "xil_printf.h"
 #include "debug.h"
 #include "io_access.h"
@@ -298,4 +246,5 @@ void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)
     xil_printf("dword12 = 0x%X\r\n", nvmeIOCmd->dword12);
 #endif
 }
+
 
