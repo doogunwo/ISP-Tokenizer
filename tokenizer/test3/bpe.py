@@ -9,7 +9,7 @@ class BPE():
         """Initialize BPE tokenizer."""
         self.corpus = corpus
         self.vocab_size = vocab_size
-        
+        self.time_data = []
         # pre-tokenize the corpus into words, BERT pre-tokenizer is used here
         self.tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
         self.word_freqs = defaultdict(int)
@@ -18,46 +18,72 @@ class BPE():
 
     def train(self):
         """Train BPE tokenizer."""
-
-        # compute the frequencies of each word in the corpus
+        start_all = time.time()
+        start_corpus = time.time()
+        # 말뭉치에 있는 각 단어의 빈도를 계산합니다.
         for text in self.corpus:
             words_with_offsets = self.tokenizer.backend_tokenizer.pre_tokenizer.pre_tokenize_str(text)
             new_words = [word for word, offset in words_with_offsets]
             for word in new_words:
                 self.word_freqs[word] += 1
-
-        # compute the base vocabulary of all characters in the corpus
+        end_corpus = time.time() 
+        self.time_data.append(end_corpus-start_corpus)
+        
+        start_letter = time.time()
+        # 말뭉치에 있는 모든 문자의 기본 어휘를 계산합니다.
         alphabet = []
         for word in self.word_freqs.keys():
             for letter in word:
                 if letter not in alphabet:
                     alphabet.append(letter)
         alphabet.sort()
-
-        # add the special token </w> at the beginning of the vocabulary
+        end_letter = time.time()
+        self.time_data.append(end_letter-start_letter)
+        
+        start_vocab = time.time()
+        # 어휘 시작 부분에 특수 토큰을 추가하십시오 </w>
         vocab = ["</w>"] + alphabet.copy()
 
-        # split each word into individual characters before training
+        #훈련 전에 각 단어를 개별 문자로 분할
         self.splits = {word: [c for c in word] for word in self.word_freqs.keys()}
-
-        # merge the most frequent pair iteratively until the vocabulary size is reached
+        end_vocab = time.time()
+        self.time_data.append(end_vocab-start_vocab)
+        
+        time_pair_freqs = 0
+        time_best_pair = 0
+        time_merge_pair=0
+        #어휘 크기에 도달할 때까지 가장 빈번한 쌍을 반복적으로 병합합니다.
         while len(vocab) < self.vocab_size:
-
-            # compute the frequency of each pair
+            start= time.time()
+            # 각 쌍의 빈도를 계산합니다.
             pair_freqs = self.compute_pair_freqs()
-
-            # find the most frequent pair
+            end=  time.time()
+            time_pair_freqs = time_pair_freqs+(end-start)
+            
+            start= time.time()
+            # 가장 빈번한 쌍을 찾기기
             best_pair = ""
             max_freq = None
             for pair, freq in pair_freqs.items():
                 if max_freq is None or max_freq < freq:
                     best_pair = pair
                     max_freq = freq
-
-            # merge the most frequent pair
+            end=  time.time()
+            time_best_pair = time_best_pair + (end-start)
+            
+            start= time.time()
+            # 가장 빈번한 쌍을 병합
             self.splits = self.merge_pair(*best_pair)
             self.merges[best_pair] = best_pair[0] + best_pair[1]
+            end=  time.time()
+            time_merge_pair = time_merge_pair+(end-start)
             vocab.append(best_pair[0] + best_pair[1])
+        end_all = time.time()
+        self.time_data.append(time_pair_freqs)
+        self.time_data.append(time_best_pair)
+        self.time_data.append(time_merge_pair)
+        self.time_data.append(end_all-start_all)
+        
         return self.merges
 
 
