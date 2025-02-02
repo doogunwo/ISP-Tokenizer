@@ -54,18 +54,27 @@ void MinBPE::train(const std::string& text, size_t vocab_size, bool verbose) {
     }
 }
 
-std::vector<int> MinBPE::encode(const std::string& text) const {
-    std::vector<int> ids(text.begin(), text.end());
-    for (const auto& merge : merges) {
-        merge_pairs(ids, merge.pair, merge.idx);
+std::vector<int> MinBPE::encode(const std::string& text) const {  // const 유지
+    std::vector<int> ids;
+    for (char c : text) {
+        ids.push_back(static_cast<unsigned char>(c));
     }
-    return ids;
+
+    std::vector<int> temp_ids = ids;  // mutable 변수 사용
+
+    for (const auto& merge : merges) {
+        const_cast<MinBPE*>(this)->merge_pairs(temp_ids, merge.pair, merge.idx);
+    }
+
+    return temp_ids;
 }
+
 
 std::string MinBPE::decode(const std::vector<int>& ids) const {
     std::string result;
     for (int id : ids) {
-        result += reverse_vocab.at(id);
+        auto it = reverse_vocab.find(id);
+        if( it != reverse_vocab.end()) result = result + it->second;
     }
     return result;
 }

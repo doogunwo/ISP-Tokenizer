@@ -13,7 +13,20 @@
 struct IntPair {
     int first;
     int second;
+
+    bool operator==(const IntPair& other) const {
+      return first == other.first && second == other.second;
+  }
 };
+
+namespace std {
+    template <>
+    struct hash<IntPair> {
+        size_t operator()(const IntPair& pair) const {
+            return hash<int>()(pair.first) ^ (hash<int>()(pair.second) << 1);
+        }
+    };
+}
 
 struct Merge {
     IntPair pair;
