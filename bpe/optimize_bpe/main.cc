@@ -46,11 +46,4 @@ int main() {
     std::string data = read_file_data(file_path,read_size);
 
     tokenizer.train(data, vocab_size);
-
-    std::vector<int> encode = tokenizer.encode(data);
-    std::string decode = tokenizer.decode(encode);
-
-    for(int id: encode) std::cout<<id<<" ";
-    std::cout<< "\nDecode : " << decode<<std::endl;
-    return 0;
 }

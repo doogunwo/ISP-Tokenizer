@@ -5,7 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
-#include <algorithm> 
+#include <algorithm>
 #include <queue>
 
 #define INITIAL_VOCAB_SIZE 256
@@ -17,7 +17,7 @@ struct IntPair {
     int second;
 
     bool operator==(const IntPair& other) const {
-      return first == other.first && second == other.second;
+        return first == other.first && second == other.second;
     }
 
     bool operator<(const IntPair& other) const {
@@ -49,15 +49,18 @@ public:
     std::vector<int> encode(const std::string& text) const;
     std::string decode(const std::vector<int>& ids) const;
     
-
 private:
     std::vector<Merge> merges;
     std::unordered_map<std::string, int> vocab;
     std::unordered_map<int, std::string> reverse_vocab;
+
     void count_pairs(const std::vector<int>& ids, std::unordered_map<IntPair, int>& pair_counts) const;
-    void count_pairs_pq(const std::vector<int>& ids, std::unordered_map<IntPair, int>& pair_counts, std::priority_queue<PairFreq>& pq);
+    
+    void count_pairs_pq(const std::vector<int>& ids, 
+                    std::unordered_map<IntPair, int>& pair_counts, 
+                    std::priority_queue<PairFreq>& pq);
+
     void merge_pairs(std::vector<int>& ids, const IntPair& pair, int idx);
 };
 
 #endif // MINBPE_H
-
