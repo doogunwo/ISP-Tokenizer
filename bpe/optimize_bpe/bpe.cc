@@ -95,14 +95,11 @@ void BBPE::merge_pairs(std::vector<int>& ids, const IntPair& pair, int idx) {
     ids.resize(write_index);
 }
 
-
 void BBPE::train(const std::string& text, size_t vocab_size, bool verbose) {
-    std::cout << "Train Start" << std::endl;
-
     std::vector<int> ids(text.begin(), text.end());
     size_t num_batches = omp_get_max_threads();  // 병렬로 실행할 배치 개수
     size_t batch_size = ids.size() / num_batches;
-
+    int min_frequency = 5;
     std::vector<std::vector<int>> batched_ids(num_batches);
     for (size_t i = 0; i < num_batches; ++i) {
         size_t start = i * batch_size;
@@ -111,22 +108,48 @@ void BBPE::train(const std::string& text, size_t vocab_size, bool verbose) {
     }
 
     size_t total_merges = vocab_size - INITIAL_VOCAB_SIZE;
+    std::unordered_map<int, std::string> local_vocab;  
 
-    #pragma omp parallel for
-    for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
-        std::unordered_map<IntPair, int> batch_pair_counts;
-        std::priority_queue<PairFreq> batch_pq;
+    #pragma omp parallel
+    {
+        std::unordered_map<int, std::string> thread_local_vocab;
+        
+        #pragma omp for
+        for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
+            std::unordered_map<IntPair, int> batch_pair_counts;
+            std::priority_queue<PairFreq> batch_pq;
 
-        count_pairs_pq(batched_ids[batch_idx], batch_pair_counts, batch_pq);
+            count_pairs_pq(batched_ids[batch_idx], batch_pair_counts, batch_pq);
 
-        for (size_t i = 0; i < total_merges && !batch_pq.empty(); ++i) {
-            IntPair best_pair = batch_pq.top().second;
-            batch_pq.pop();
+            for (size_t i = 0; i < total_merges && !batch_pq.empty(); ++i) {
+                PairFreq best_pair_freq = batch_pq.top();
+                batch_pq.pop();
 
-            int new_token_id = INITIAL_VOCAB_SIZE + i;
-            reverse_vocab[new_token_id] = reverse_vocab[best_pair.first] + reverse_vocab[best_pair.second];
+                IntPair best_pair = best_pair_freq.second;
+                int pair_frequency = best_pair_freq.first;
 
-            merge_pairs(batched_ids[batch_idx], best_pair, new_token_id);
+                if (pair_frequency < min_frequency) {
+                    #pragma omp cancle for
+                }
+
+                int new_token_id = INITIAL_VOCAB_SIZE + i;
+                std::string token_first = reverse_vocab.count(best_pair.first) ? reverse_vocab[best_pair.first] : std::string(1, (char)best_pair.first);
+                std::string token_second = reverse_vocab.count(best_pair.second) ? reverse_vocab[best_pair.second] : std::string(1, (char)best_pair.second);
+
+                std::string new_token = token_first + token_second;
+                
+                thread_local_vocab[new_token_id] = new_token;
+                
+                merge_pairs(batched_ids[batch_idx], best_pair, new_token_id);
+            }
+        }
+
+        // 🔥 병렬 학습된 서브워드를 전역 reverse_vocab에 반영 (critical section)
+        #pragma omp critical
+        {
+            for (const auto& entry : thread_local_vocab) {
+                reverse_vocab[entry.first] = entry.second;
+            }
         }
     }
 
@@ -135,22 +158,46 @@ void BBPE::train(const std::string& text, size_t vocab_size, bool verbose) {
     for (const auto& batch : batched_ids) {
         ids.insert(ids.end(), batch.begin(), batch.end());
     }
+
+    std::cout <<"\n Final Vocabulary: \n";
+    for (const auto& [id, token] : reverse_vocab) {
+        std::cout << id << " -> " << token << "'" << std::endl;
+    }
 }
 
 std::vector<int> BBPE::encode(const std::string& text) const {
-    std::vector<int> ids;
-    for (char c : text) {
-        ids.push_back(static_cast<unsigned char>(c));
+  size_t text_length = text.size();
+  std::vector<int> ids(text_length);
+
+  for (size_t i = 0; i < text_length; i++) {
+        ids[i] = static_cast<unsigned char>(text[i]);
     }
 
-    std::vector<int> temp_ids = ids;
+  std::vector<int> merged_ids;
+    size_t i = 0;
 
-    for (const auto& merge : merges) {
-        const_cast<BBPE*>(this)->merge_pairs(temp_ids, merge.pair, merge.idx);
+    while (i < text_length) {
+        size_t longest_match = 1;
+        int best_token_id = ids[i];
+
+        for (size_t len = 1; len <= text_length - i; ++len) {
+            std::string subword = text.substr(i, len);
+            auto it = vocab.find(subword);
+            if (it != vocab.end()) {
+                best_token_id = it->second;
+                longest_match = len;
+            }
+        }
+
+        // ✅ 최종 매칭된 서브워드 추가
+        merged_ids.push_back(best_token_id);
+        i += longest_match; // 가장 긴 매칭된 서브워드 길이만큼 이동
     }
 
-    return temp_ids;
+    return merged_ids;
+
 }
+
 
 std::string BBPE::decode(const std::vector<int>& ids) const {
     std::string result;
@@ -160,3 +207,5 @@ std::string BBPE::decode(const std::vector<int>& ids) const {
     }
     return result;
 }
+
+

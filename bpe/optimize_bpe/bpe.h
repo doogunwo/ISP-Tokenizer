@@ -48,11 +48,11 @@ public:
     void train(const std::string& text, size_t vocab_size, bool verbose = false);
     std::vector<int> encode(const std::string& text) const;
     std::string decode(const std::vector<int>& ids) const;
+    std::unordered_map<int, std::string> reverse_vocab;
     
 private:
     std::vector<Merge> merges;
     std::unordered_map<std::string, int> vocab;
-    std::unordered_map<int, std::string> reverse_vocab;
 
     void count_pairs(const std::vector<int>& ids, std::unordered_map<IntPair, int>& pair_counts) const;
     

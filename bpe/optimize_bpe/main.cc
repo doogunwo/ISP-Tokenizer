@@ -40,10 +40,19 @@ std::string read_file_data(const std::string& file_path, size_t read_size) {
 int main() {
     BBPE tokenizer;
     std::string file_path = "wiki_corpus.txt";  
-    size_t vocab_size = 5000;
-    size_t read_size = 1024*1024;
+    size_t vocab_size = 30000;
+    size_t read_size = 2*1024*1024;
 
-    std::string data = read_file_data(file_path,read_size);
-
+    std::string data = read_file_data(file_path, read_size);
     tokenizer.train(data, vocab_size);
+    
+    std::string test_sentence = "y- r, od, ny gn fueododlawPo";
+    std::vector<int> encoded_tokens = tokenizer.encode(test_sentence);
+  
+    
+    for (int token_id : encoded_tokens) {
+        std::cout << tokenizer.reverse_vocab[token_id] << ", ";
+    }
+    std::cout<<std::endl;
 }
+
