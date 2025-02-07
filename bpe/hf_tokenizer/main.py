@@ -19,6 +19,6 @@ corpus_path = "wiki_corpus.txt"
 tokenizer.train([corpus_path], trainer)
 
 # ✅ 토크나이저 저장
-tokenizer.save("bbpe_tokenizer.json")
+tokenizer.save("bbpe_tokenizer.bin")
 print("Byte-Level BPE 토크나이저 학습 완료! 🚀🔥")
 
