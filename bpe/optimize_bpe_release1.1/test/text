@@ -1,0 +1,1 @@
+g++ -o test_merge_opeator test_Merge_opeate.cpp ../bpe.cc -btbb -std=c++17
