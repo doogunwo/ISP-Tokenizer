@@ -3,7 +3,7 @@
 #include <string.h>
 #include <omp.h>
 
-#define INITIAL_VOCAB_SIZE 5000
+#define INITIAL_VOCAB_SIZE 20
 
 typedef struct
 {
@@ -412,7 +412,7 @@ int main(int argc, char *argv[])
 
     // 토크나이저 생성 및 학습
     BasicTokenizer *tokenizer = create_basic_tokenizer();
-    int target_vocab_size = 3000; // 기본보다 50개 더 학습
+    int target_vocab_size = 50; // 기본보다 50개 더 학습
     train(tokenizer, text, target_vocab_size, 1);
 
     // 예제 문장 테스트
