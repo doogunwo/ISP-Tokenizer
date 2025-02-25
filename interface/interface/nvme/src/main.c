@@ -23,7 +23,7 @@ int main(int argc, char *argv[]){
     close(fd);
     return 1;
   }
-
+  
   close(fd);
   return 0;
 

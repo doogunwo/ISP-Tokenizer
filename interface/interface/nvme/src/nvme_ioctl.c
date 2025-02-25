@@ -29,6 +29,7 @@ int bpe_tokenize(int fd, struct file_metadata *metadata){
     if (!ioctl_cmd.addr) return -1;
     
     if (ioctl(fd, NVME_IOCTL_IO_CMD, &ioctl_cmd) < 0) return -1;
+    printf("NVMe command result: %u\n", ioctl_cmd.result);
 
     free((void *)ioctl_cmd.addr);
 
