@@ -5,17 +5,14 @@
 #include <sys/msg.h>
 #include <sys/shm.h>
 #include <unistd.h>
-#include <atomic>
-#include <vector>  // 
 
-#include "../include/tokenizers_cpp.h"
-#include <memory>
-#include <fstream>
+#include <vector>  
+
 #include <nlohmann/json.hpp>
-#include <sstream>
+
 #include <pthread.h> //spinlock
 #include <nlohmann/json.hpp>
-#include <memory>
+
 
 #define SHM_READ_KEY 0x01
 #define SHM_WRITE_KEY 0x02
@@ -29,6 +26,8 @@ pthread_spinlock_t spinlock;
 extern std::string LoadJSONFromFile(const std::string& path);
 extern std::string LoadTXTFromFile(const std::string& path);
 extern std::vector<int32_t> token(const std::string vocab_blob, const std::string merges_blob, const std::string added_token, const std::string text);
+
+
 
 //  공유 메모리 초기화
 char* init_shm(int shm_key) {
@@ -64,7 +63,7 @@ bool receive_spdk_command(int msg_id){
     }msg;
 
     msgrcv(msg_id, &msg, sizeof(msg.msg_text), 1, 0);
-    return (strcmp(msg.msg_text, "\xd4") ==0);
+    return (strcmp(msg.msg_text, "\xD4") ==0);
 }
 
 //  BPE → SPDK (쓰기용 공유 메모리에 데이터 저장)
@@ -105,9 +104,17 @@ void bpe_worker(char* shm_read_ptr, char* shm_write_ptr,
 
     std::cout << "[BPE] SPDK로부터 데이터 읽기..." << std::endl;
     std::string input_text = read_from_spdk(shm_read_ptr);
+    std::cout << "[DEBUG] Input Text : " << input_text << std::endl;
+
+
+    std::string utf8_str;
+    utf8_str.assign(input_text, input_text.size());
+    
+    // UTF-8 바이트 변환 적용
+    std::cout << "[DEBUG] UTF-8 Convert Text : " << utf8_str << std::endl;
 
     std::cout << "[BPE] BPE 토큰화 수행 중..." << std::endl;
-    std::vector<int32_t> token_ids = token(vocab, merges, added_token, std::string(input_text));
+    std::vector<int32_t> token_ids = token(vocab, merges, added_token, utf8_str);
 
     std::cout << "[BPE] BPE 토큰화 완료, 공유 메모리에 저장 중..." << std::endl;
     write_to_spdk(shm_write_ptr, token_ids);
