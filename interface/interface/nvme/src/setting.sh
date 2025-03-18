@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # 1️⃣ 기존 마운트 해제
 sudo umount /mnt/nvme 2>/dev/null
 
