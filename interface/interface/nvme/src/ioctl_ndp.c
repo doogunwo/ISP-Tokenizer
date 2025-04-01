@@ -12,7 +12,7 @@
 
 #define LBA_SIZE 4096  // NVMe LBA 크기
 #define NVME_DEVICE "/dev/nvme0n1"
-#define BUFFER_SIZE 4096  // NVMe에서 읽어올 데이터 크기
+#define BUFFER_SIZE  8192  // NVMe에서 읽어올 데이터 크기
 
 //  현재 시간을 마이크로초(µs) 단위로 반환하는 함수
 double get_time_in_us() {
@@ -28,13 +28,14 @@ void parse_nvme_response(uint8_t* nvme_data, size_t length) {
         return;
     }
 
+    // 첫 번째 8바이트는 토큰 개수
     size_t token_count = *(size_t*)(nvme_data);
     int32_t* tokens = (int32_t*)(nvme_data + sizeof(size_t));
 
     printf("\n");
 }
 
-//  ioctl()을 사용하여 NVMe 명령 직접 실행 및 I/O 대역폭 측정 추가
+//  ioctl()을 사용하여 NVMe 명령 직접 실행 
 void execute_nvme_command(uint64_t cdw10) {
     int fd = open(NVME_DEVICE, O_RDWR);
     if (fd == -1) {
@@ -48,9 +49,11 @@ void execute_nvme_command(uint64_t cdw10) {
     cmd.opcode = 0xD4;  // Vendor-Specific Opcode
     cmd.nsid = 1;       // Namespace ID
     cmd.cdw10 = cdw10;  // Logical Block Address (LBA)
-    cmd.cdw11 = 0;      // 항상 블록 1개만 읽기
+    cmd.cdw11 = 0;     
+    cmd.cdw12 = 1;
+    cmd.cdw13 = 0;
     cmd.data_len = BUFFER_SIZE;
-    cmd.addr = (uintptr_t)buffer;  // ✅ 올바른 필드 사용
+    cmd.addr = (__u64)(uintptr_t)buffer;
     cmd.metadata = 0;
     cmd.metadata_len = 0;
     cmd.timeout_ms = 0;
@@ -75,7 +78,7 @@ void execute_nvme_command(uint64_t cdw10) {
     printf("[INFO] NVMe 블록 데이터 읽기 성공! 실행 시간: %.2f µs\n", nvme_end_time - nvme_start_time);
     printf("[INFO] NVMe 블록 읽기 속도: %.2f MB/s\n", throughput);
 
-    // buffer에 실제로 담긴 데이터 크기 측정
+    //  buffer에 실제로 담긴 데이터 크기 측정
     size_t actual_data_size = 0;
     for (size_t i = 0; i < BUFFER_SIZE; i++) {
         if (buffer[i] != 0) {
@@ -84,10 +87,7 @@ void execute_nvme_command(uint64_t cdw10) {
     }
     printf("[DEBUG] 실제 데이터 크기: %lu bytes\n", (unsigned long)actual_data_size);
     //  NVMe 응답을 사람이 읽을 수 있는 형태로 변환
-    double parse_start_time = get_time_in_us();
     parse_nvme_response(buffer, BUFFER_SIZE);
-    double parse_end_time = get_time_in_us();
-    printf("[INFO] 데이터 변환,  실행 시간: %.2f µs\n", parse_end_time - parse_start_time);
 
     close(fd);
 }
