@@ -36,36 +36,7 @@ std::vector<int32_t> token(
     const std::string text
 )
 {
-
   std::unique_ptr<tokenizers::Tokenizer> tokenizer = tokenizers::Tokenizer::FromBlobByteLevelBPE(vocab_blob, merges_blob, added_token);
   std::vector<int32_t> token_ids = tokenizer->Encode(text);// txt -> 서브워드화  
   return token_ids;
 }
-/*
-int main(){
-  std::string json_blob = LoadJSONFromFile("../model/byte_level_bpe_model.json");
-  json j;
-  try{
-    j= json::parse(json_blob);
-  }
-  catch(const json::parse_error& e){
-    std::cerr << "json parsing error" << e.what() << std::endl;
-    return -1;
-  }
-
-
-  json model = j["model"];
-
-  std::string vocab_blob = model["vocab"].dump();
-  
-  std::string merges_blob = LoadTXTFromFile("../model/merges.txt");
-
- 
-
-  //token(vocab_blob, merges_blob, added_token);
-  
-  return 0;
-}
-  
-
-*/

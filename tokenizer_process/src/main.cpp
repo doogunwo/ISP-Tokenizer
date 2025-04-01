@@ -12,11 +12,11 @@
 
 #include <pthread.h> //spinlock
 #include <nlohmann/json.hpp>
-
+#include <sys/time.h>
 
 #define SHM_READ_KEY 0x01
 #define SHM_WRITE_KEY 0x02
-#define SHM_SIZE 12288  // 공유 메모리 크기
+#define SHM_SIZE 131072  // 공유 메모리 크기
 #define MSG_KEY 1234  //  SPDK Mock과 동일한 키 사용
 
 using json = nlohmann::json;
@@ -28,6 +28,11 @@ extern std::string LoadTXTFromFile(const std::string& path);
 extern std::vector<int32_t> token(const std::string vocab_blob, const std::string merges_blob, const std::string added_token, const std::string text);
 
 
+double get_time_in_us() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (double)(tv.tv_sec * 1e6 + tv.tv_usec);
+}
 
 //  공유 메모리 초기화
 char* init_shm(int shm_key) {
@@ -66,6 +71,7 @@ bool receive_spdk_command(int msg_id){
     return (strcmp(msg.msg_text, "\xD4") ==0);
 }
 
+
 //  BPE → SPDK (쓰기용 공유 메모리에 데이터 저장)
 void write_to_spdk(char* shm_write_ptr, const std::vector<int32_t>& token_ids) {
     size_t token_count = token_ids.size();
@@ -74,7 +80,6 @@ void write_to_spdk(char* shm_write_ptr, const std::vector<int32_t>& token_ids) {
     memset(shm_write_ptr, 0, SHM_SIZE);
     memcpy(shm_write_ptr, &token_count, sizeof(size_t));
     memcpy(shm_write_ptr + sizeof(size_t), token_ids.data(), byte_size);
-    std::cout <<"[BPE] saved token counts : " << token_count << std::endl;
 }
 
 //  SPDK 메시지 큐로 완료 신호 전송
@@ -102,25 +107,33 @@ void bpe_worker(char* shm_read_ptr, char* shm_write_ptr,
         "[MASK]": 4
     })";
 
-    std::cout << "[BPE] SPDK로부터 데이터 읽기..." << std::endl;
+    //std::cout << "[BPE] SPDK로부터 데이터 읽기..." << std::endl;
+    double start_time = get_time_in_us();
     std::string input_text = read_from_spdk(shm_read_ptr);
-    std::cout << "[DEBUG] Input Text : " << input_text << std::endl;
-
-
-    std::string utf8_str;
-    utf8_str.assign(input_text, input_text.size());
+    double end_time = get_time_in_us();
+    std::cout << "[TIME] : read_from_spdk "<<end_time - start_time << "µs\n" << std::endl;
     
-    // UTF-8 바이트 변환 적용
-    std::cout << "[DEBUG] UTF-8 Convert Text : " << utf8_str << std::endl;
+    start_time = get_time_in_us();
+    std::vector<int32_t> token_ids = token(vocab, merges, added_token, input_text);
+    end_time = get_time_in_us();
 
-    std::cout << "[BPE] BPE 토큰화 수행 중..." << std::endl;
-    std::vector<int32_t> token_ids = token(vocab, merges, added_token, utf8_str);
+    std::cout << "[TIME] :토큰화 시간  "<<end_time - start_time << "µs\n" << std::endl;
+    std::cout << "Total token count: " << token_ids.size() << std::endl;
+    
 
-    std::cout << "[BPE] BPE 토큰화 완료, 공유 메모리에 저장 중..." << std::endl;
+    start_time = get_time_in_us(); 
     write_to_spdk(shm_write_ptr, token_ids);
+    end_time = get_time_in_us();
+    std::cout << "[TIME] :write_to_spdk  "<<end_time - start_time << "µs\n" << std::endl;
+
 }
 
 int main() {
+    //기존 공유 메모리 삭제
+    // 실행 시작 전 기존 공유 메모리 제거
+    shmctl(shmget(SHM_READ_KEY, 0, 0666), IPC_RMID, NULL);
+    shmctl(shmget(SHM_WRITE_KEY, 0, 0666), IPC_RMID, NULL);
+
     // 2개 공유 메모리 연결
     char* shm_read_ptr  = init_shm(SHM_READ_KEY);
     char* shm_write_ptr = init_shm(SHM_WRITE_KEY);
@@ -130,24 +143,20 @@ int main() {
     // 스핀락
     pthread_spin_init(&spinlock, 0);
 
-    // 모델 로드
-    std::string json_blob = LoadJSONFromFile("../model/byte_level_bpe_model.json");
-    json j;
-    try{
-        j= json::parse(json_blob);
-    }
-    catch(const json::parse_error& e){
-        std::cerr << "json parsing error" << e.what() << std::endl;
-        return -1;
-    }
-
-
-    json model = j["model"];
-
-    std::string vocab_blob = model["vocab"].dump();
+    std::string model_path = "../model/byte_level_bpe_model.json";
+    std::string merges_path = "../model/merges.txt";
     
-    std::string merges_blob = LoadTXTFromFile("../model/merges.txt");
-
+    double model_load_start = get_time_in_us();
+    std::string json_blob = LoadJSONFromFile(model_path);
+    
+    json j = json::parse(json_blob);
+    json model = j["model"];
+    std::string vocab_blob = model["vocab"].dump();
+    std::string merges_blob = LoadTXTFromFile(merges_path);
+    double model_load_end = get_time_in_us();
+    
+    std::cout << "[INFO] 모델 로드 시간: " << (model_load_end - model_load_start) << " µs" << std::endl;
+    
     //----------------
     while (true) {
         std::cout << "[MAIN] SPDK Wait..." << std::endl;
@@ -156,7 +165,6 @@ int main() {
             pthread_spin_lock(&spinlock);
             if (receive_spdk_command(msg_id)) break;
             pthread_spin_unlock(&spinlock);
-            usleep(10);
         }
 
         std::cout << "[MAIN] SPDK 메시지 수신! BPE 프로세스 실행 시작..." << std::endl;

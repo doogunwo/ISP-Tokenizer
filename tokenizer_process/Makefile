@@ -7,7 +7,7 @@ LIB_DIR = /home/doogunwo/Desktop/tokenizers-0.20.3/tokenizers/tokenizers-cpp/bui
 LIBS = -L$(LIB_DIR) -ltokenizers_cpp -ltokenizers_c -lpthread -ldl
 
 # 디렉토리 설정
-SRC_DIR = src
+SRC_DIR = src/
 OBJ_DIR = bin/obj
 BIN_DIR = bin
 MODEL_DIR = model
