@@ -1,175 +1,169 @@
 #include <iostream>
-#include <cstdlib>
+#include <fstream>
+#include <vector>
+#include <string>
 #include <cstring>
-#include <sys/ipc.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
+#include <fcntl.h>
 #include <unistd.h>
-
-#include <vector>  
-
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+#include <linux/nvme_ioctl.h>
+#include <linux/fiemap.h>
+#include <sys/time.h>
 #include <nlohmann/json.hpp>
 
-#include <pthread.h> //spinlock
-#include <nlohmann/json.hpp>
-
-
-#define SHM_READ_KEY 0x01
-#define SHM_WRITE_KEY 0x02
-#define SHM_SIZE 12288  // 공유 메모리 크기
-#define MSG_KEY 1234  //  SPDK Mock과 동일한 키 사용
-
-using json = nlohmann::json;
-pthread_spinlock_t spinlock;
-
-// byte_level_bpe.cpp에 정의된 함수들 (extern으로 선언)
+extern double get_time_in_us();
 extern std::string LoadJSONFromFile(const std::string& path);
 extern std::string LoadTXTFromFile(const std::string& path);
 extern std::vector<int32_t> token(const std::string vocab_blob, const std::string merges_blob, const std::string added_token, const std::string text);
 
+#define LBA_SIZE 4096
+#define BLOCK_COUNT 32
+#define BUFFER_SIZE (BLOCK_COUNT * LBA_SIZE)
+#define NVME_DEVICE "/dev/nvme0n1"
+#define MODEL_PATH "../model/byte_level_bpe_model.json"
+#define MERGES_PATH "../model/merges.txt"
 
+using json = nlohmann::json;
 
-//  공유 메모리 초기화
-char* init_shm(int shm_key) {
-    int shm_id = shmget(shm_key, SHM_SIZE, IPC_CREAT | 0666);
-    if (shm_id < 0) {
-        perror("공유 메모리 생성 실패");
-        exit(1);
-    }
-    char* shm_ptr = static_cast<char*>(shmat(shm_id, NULL, 0));  // 
-    if (shm_ptr == (char *)(-1)) {
-        perror("공유 메모리 연결 실패");
-        exit(1);
-    }
-    return shm_ptr;
-}
+void TokenProcess(const std::string& full_input) {
+    double model_load_start = get_time_in_us();
 
-// 공유 메모리 해제
-void detach_shm(char* shm_ptr, int shm_key) {
-    shmdt(shm_ptr);
-    shmctl(shmget(shm_key, SHM_SIZE, IPC_CREAT | 0666), IPC_RMID, NULL);
-}
-
-//  SPDK → BPE (읽기용 공유 메모리에서 데이터 읽기)
-std::string read_from_spdk(char* shm_read_ptr) {
-    return std::string(shm_read_ptr, SHM_SIZE);
-}
-
-// SPDK로부터 명령 수신 0xd4 받으면 BPE 시작
-bool receive_spdk_command(int msg_id){
-    struct msg_buffer {
-        long msg_type;
-        char msg_text[10];
-    }msg;
-
-    msgrcv(msg_id, &msg, sizeof(msg.msg_text), 1, 0);
-    return (strcmp(msg.msg_text, "\xD4") ==0);
-}
-
-//  BPE → SPDK (쓰기용 공유 메모리에 데이터 저장)
-void write_to_spdk(char* shm_write_ptr, const std::vector<int32_t>& token_ids) {
-    size_t token_count = token_ids.size();
-    size_t byte_size = token_count * sizeof(int32_t);
-
-    memset(shm_write_ptr, 0, SHM_SIZE);
-    memcpy(shm_write_ptr, &token_count, sizeof(size_t));
-    memcpy(shm_write_ptr + sizeof(size_t), token_ids.data(), byte_size);
-    std::cout <<"[BPE] saved token counts : " << token_count << std::endl;
-}
-
-//  SPDK 메시지 큐로 완료 신호 전송
-void send_spdk_response(int msg_id) {
-    struct msg_buffer {
-        long msg_type;
-        char msg_text[10];
-    } response;
-
-    response.msg_type = 2;
-    strcpy(response.msg_text, "\xd5");
-
-    if (msgsnd(msg_id, &response, sizeof(response.msg_text), 0) == -1)perror("[BPE] SPDK <- MSG send Fail");
-    else std::cout << "[BPE] SPDK <- 0xd5 Finish" << std::endl;  //  세미콜론 추가
-}
-
-//  BPE 토큰화 및 공유 메모리 쓰기 함수
-void bpe_worker(char* shm_read_ptr, char* shm_write_ptr, 
-                const std::string& vocab, const std::string& merges) {
-    std::string added_token = R"({
-        "[PAD]": 0,
-        "[UNK]": 1,
-        "[CLS]": 2,
-        "[SEP]": 3,
-        "[MASK]": 4
-    })";
-
-    std::cout << "[BPE] SPDK로부터 데이터 읽기..." << std::endl;
-    std::string input_text = read_from_spdk(shm_read_ptr);
-    std::cout << "[DEBUG] Input Text : " << input_text << std::endl;
-
-
-    std::string utf8_str;
-    utf8_str.assign(input_text, input_text.size());
-    
-    // UTF-8 바이트 변환 적용
-    std::cout << "[DEBUG] UTF-8 Convert Text : " << utf8_str << std::endl;
-
-    std::cout << "[BPE] BPE 토큰화 수행 중..." << std::endl;
-    std::vector<int32_t> token_ids = token(vocab, merges, added_token, utf8_str);
-
-    std::cout << "[BPE] BPE 토큰화 완료, 공유 메모리에 저장 중..." << std::endl;
-    write_to_spdk(shm_write_ptr, token_ids);
-}
-
-int main() {
-    // 2개 공유 메모리 연결
-    char* shm_read_ptr  = init_shm(SHM_READ_KEY);
-    char* shm_write_ptr = init_shm(SHM_WRITE_KEY);
-
-    int msg_id = msgget(MSG_KEY, IPC_CREAT | 0666);
-
-    // 스핀락
-    pthread_spin_init(&spinlock, 0);
-
-    // 모델 로드
-    std::string json_blob = LoadJSONFromFile("../model/byte_level_bpe_model.json");
-    json j;
-    try{
-        j= json::parse(json_blob);
-    }
-    catch(const json::parse_error& e){
-        std::cerr << "json parsing error" << e.what() << std::endl;
-        return -1;
+    std::string model_json = LoadJSONFromFile(MODEL_PATH);
+    if (model_json.empty()) {
+        std::cerr << "[ERROR] JSON 로드 실패\n";
+        return;
     }
 
+    auto j = nlohmann::json::parse(model_json);
+    std::string vocab_blob = j["model"]["vocab"].dump();
+    std::string merges_blob = LoadTXTFromFile(MERGES_PATH);
+    std::string added_token = R"({ "[PAD]": 0, "[UNK]": 1, "[CLS]": 2, "[SEP]": 3, "[MASK]": 4 })";
 
-    json model = j["model"];
+    double model_load_end = get_time_in_us();
+    std::cout << "[LOG] 모델 로딩 시간: " << (model_load_end - model_load_start) << " µs\n";
 
-    std::string vocab_blob = model["vocab"].dump();
-    
-    std::string merges_blob = LoadTXTFromFile("../model/merges.txt");
+    // 1. 문자열 유효 길이 추출 (SPDK-BPE와 동일하게 '\0' 기준 자르기)
+    size_t real_len = strnlen(full_input.c_str(), full_input.size());
+    std::string input_text = full_input.substr(0, real_len);
 
-    //----------------
-    while (true) {
-        std::cout << "[MAIN] SPDK Wait..." << std::endl;
+    std::cout << "[DEBUG] 유효 input_text 길이: " << input_text.size() << "\n";
 
-        while (true) {
-            pthread_spin_lock(&spinlock);
-            if (receive_spdk_command(msg_id)) break;
-            pthread_spin_unlock(&spinlock);
-            usleep(10);
-        }
+ 
+    // 3. 토큰화 실행
+    std::vector<int> token_ids = token(vocab_blob, merges_blob, added_token, input_text);
+    std::vector<int> token_ids2 = token(vocab_blob, merges_blob, added_token, input_text);
+    std::vector<int> token_ids3 = token(vocab_blob, merges_blob, added_token, input_text);
+    std::vector<int> token_ids4 = token(vocab_blob, merges_blob, added_token, input_text);
+    std::vector<int> token_ids5 = token(vocab_blob, merges_blob, added_token, input_text);
+    std::vector<int> token_ids6 = token(vocab_blob, merges_blob, added_token, input_text);
+    std::vector<int> token_ids7 = token(vocab_blob, merges_blob, added_token, input_text);
+    std::vector<int> token_ids8 = token(vocab_blob, merges_blob, added_token, input_text);
+    std::vector<int> token_ids9 = token(vocab_blob, merges_blob, added_token, input_text);
 
-        std::cout << "[MAIN] SPDK 메시지 수신! BPE 프로세스 실행 시작..." << std::endl;
-        bpe_worker(shm_read_ptr, shm_write_ptr, vocab_blob, merges_blob);
 
-        send_spdk_response(msg_id);  // BPE -> SPDK
-        pthread_spin_unlock(&spinlock);
+
+    std::cout << "[Host] token ids size : " << token_ids.size() << "\n";
+
+    std::cout << "\n";
+}
+
+
+std::string ReadBlocksFromNVMe(uint64_t start_lba, uint32_t num_blocks) {
+    double open_start = get_time_in_us();
+    int fd = open(NVME_DEVICE, O_RDWR);
+    if (fd == -1) {
+        perror("[ERROR] NVMe 장치 열기 실패");
+        return "";
     }
 
-    // 공유 메모리 해제
-    pthread_spin_destroy(&spinlock);
-    detach_shm(shm_read_ptr, SHM_READ_KEY);
-    detach_shm(shm_write_ptr, SHM_WRITE_KEY);
+    double open_end = get_time_in_us();
+    std::cout << "[LOG] NVMe 장치 open 시간: " << (open_end - open_start) << " µs\n";
+
+    struct nvme_passthru_cmd cmd = {};
+    std::vector<uint8_t> buffer(BUFFER_SIZE, 0);
+
+    cmd.opcode = 0x02;
+    cmd.nsid = 1;
+    cmd.cdw10 = static_cast<__u32>(start_lba);
+    cmd.cdw12 = num_blocks - 1;
+    cmd.addr = reinterpret_cast<__u64>(buffer.data());
+    cmd.data_len = BUFFER_SIZE;
+
+    std::cout << "\n[INFO] NVMe cmd (cdw10: " << start_lba << ", blocks: " << num_blocks << ")\n";
+
+    double ioctl_start = get_time_in_us();
+    int ret = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
+    double ioctl_end = get_time_in_us();
+
+    close(fd);
+
+    if (ret < 0) {
+        perror("[ERROR] NVMe ioctl 실패");
+        return "";
+    }
+
+    std::cout << "[INFO] NVMe read time: " << (ioctl_end - ioctl_start) << " µs\n";
+    return std::string(buffer.begin(), buffer.end());
+}
+
+int main(int argc, char* argv[]) {
+    double total_start = get_time_in_us();
+
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <file-path>\n";
+        return 1;
+    }
+
+    double map_start = get_time_in_us();
+    std::string file_path = argv[1];
+    int fd = open(file_path.c_str(), O_RDONLY);
+    if (fd == -1) {
+        perror("파일 열기 실패");
+        return 1;
+    }
+
+    struct fiemap* fiemap;
+    struct fiemap_extent* extent;
+    size_t fiemap_size = sizeof(struct fiemap) + sizeof(struct fiemap_extent);
+    fiemap = static_cast<struct fiemap*>(malloc(fiemap_size));
+    if (!fiemap) {
+        close(fd);
+        return 1;
+    }
+
+    memset(fiemap, 0, fiemap_size);
+    fiemap->fm_start = 0;
+    fiemap->fm_length = ~0ULL;
+    fiemap->fm_extent_count = 1;
+
+    if (ioctl(fd, FS_IOC_FIEMAP, fiemap) == -1 || fiemap->fm_mapped_extents == 0) {
+        perror("FIEMAP 실패");
+        free(fiemap);
+        close(fd);
+        return 1;
+    }
+
+    extent = &fiemap->fm_extents[0];
+    uint64_t start_lba = extent->fe_physical / LBA_SIZE;
+
+    std::cout << "Physical Offset: " << extent->fe_physical
+              << ", Block Count: " << BLOCK_COUNT * 8 << "\n";
+
+    free(fiemap);
+    close(fd);
+    double map_end = get_time_in_us();
+    std::cout << "[LOG] FIEMAP 처리 시간: " << (map_end - map_start) << " µs\n";
+
+    double read_start = get_time_in_us();
+    std::string nvme_data = ReadBlocksFromNVMe(start_lba, BLOCK_COUNT);
+    double read_end = get_time_in_us();
+    std::cout << "[LOG] 전체 NVMe 읽기 구간 시간: " << (read_end - read_start) << " µs\n";
+
+    TokenProcess(nvme_data);
+
+    double total_end = get_time_in_us();
+    std::cout << "[INFO] 전체 실행 시간: " << (total_end - total_start) << " µs\n";
 
     return 0;
 }

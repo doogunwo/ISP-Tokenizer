@@ -16,11 +16,9 @@
 #include <pthread.h> //spinlock
 #include <nlohmann/json.hpp>
 #include <memory>
+#include "../include/shm.h"
 
-#define SHM_READ_KEY 0x01
-#define SHM_WRITE_KEY 0x02
-#define SHM_SIZE 12288  // 공유 메모리 크기
-#define MSG_KEY 1234  //  SPDK Mock과 동일한 키 사용
+
 
 using json = nlohmann::json;
 pthread_spinlock_t spinlock;
@@ -51,10 +49,7 @@ void detach_shm(char* shm_ptr, int shm_key) {
     shmctl(shmget(shm_key, SHM_SIZE, IPC_CREAT | 0666), IPC_RMID, NULL);
 }
 
-//  SPDK → BPE (읽기용 공유 메모리에서 데이터 읽기)
-std::string read_from_spdk(char* shm_read_ptr) {
-    return std::string(shm_read_ptr, SHM_SIZE);
-}
+
 
 // SPDK로부터 명령 수신 0xd4 받으면 BPE 시작
 bool receive_spdk_command(int msg_id){

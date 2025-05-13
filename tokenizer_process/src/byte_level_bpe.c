@@ -4,6 +4,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <sstream>
+#include "../include/shm.h"
 
 using json = nlohmann::json;
 
