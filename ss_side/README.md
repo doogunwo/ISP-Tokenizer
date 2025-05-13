@@ -73,6 +73,7 @@ sudo scripts/rpc.py nvmf_subsystem_add_listener nqn.2025-01.io.spdk:cnode1 -t TC
   return nvmf_bdev_ctrlr_custom_grep_cmd(bdev, desc, ch, req);
   ...
 ```
+
 주요 함수: nvmf_bdev_ctrlr_BPE_tokenize_cmd()
 함수 위치: spdk/lib/nvmf/ctrlr_bdev.c
 함수 설명: 호스트의 io passthru로 부터 설정된 각종 cdw 등을 파싱하고, 첫 번째 연산에 필요한 메타데이터 파일에 대한 Read를 수행합니다. 이 Read에 대한 콜백함수로는 연산 대상파일에 대한 Read를 호출하는 함수가 등록됩니다.
