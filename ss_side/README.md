@@ -23,7 +23,7 @@ BPE 구현은 외부 토크나이저 라이브러리를 활용합니다.
 토크나이저 : https://github.com/mlc-ai/tokenizers-cpp
 JSON Parser : https://github.com/nlohmann/json
 
-
+```
 # 2. SPDK Target server 
 #!/bin/bash
 
@@ -53,12 +53,12 @@ sudo scripts/rpc.py nvmf_subsystem_add_ns nqn.2025-01.io.spdk:cnode1 NVMe0n1
 
 리스너 등록 (클라이언트 접속 허용용)
 sudo scripts/rpc.py nvmf_subsystem_add_listener nqn.2025-01.io.spdk:cnode1 -t TCP -a <IP> -s 4420
-
+```
 
 주요 함수: nvmf_ctrlr_process_io_cmd()
 함수 위치: spdk/lib/nvmf/ctrlr.c
 함수 설명: switch 문을 통해 enum으로 정의된 opcode를 기준으로 bdev 기능을 호출합니다.
-
+```
   switch (cmd->opc) {
   case SPDK_NVME_OPC_READ:
   return nvmf_bdev_ctrlr_read_cmd(bdev, desc, ch, req);
@@ -72,7 +72,7 @@ sudo scripts/rpc.py nvmf_subsystem_add_listener nqn.2025-01.io.spdk:cnode1 -t TC
   case SPDK_NVME_OPC_CUSTOM_GREP:
   return nvmf_bdev_ctrlr_custom_grep_cmd(bdev, desc, ch, req);
   ...
-
+```
 주요 함수: nvmf_bdev_ctrlr_BPE_tokenize_cmd()
 함수 위치: spdk/lib/nvmf/ctrlr_bdev.c
 함수 설명: 호스트의 io passthru로 부터 설정된 각종 cdw 등을 파싱하고, 첫 번째 연산에 필요한 메타데이터 파일에 대한 Read를 수행합니다. 이 Read에 대한 콜백함수로는 연산 대상파일에 대한 Read를 호출하는 함수가 등록됩니다.
