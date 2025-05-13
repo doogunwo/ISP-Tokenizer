@@ -40,7 +40,8 @@
 
 
 
-# 1. 토크나이저 오프로딩 성공
+### 1. 토크나이저 오프로딩 성공
+2025-03-02
 토크나이저를 스토리지 서버 사이드로 오프로딩 구현을 성공하였습니다.
 
 # 2. Lightweight Near-Data Processing Framework Based on NVMe-over-Fabrics for BPE Tokenization
