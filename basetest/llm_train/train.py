@@ -27,7 +27,7 @@ if torch.cuda.is_available():
     print("🖥️  GPU name:", torch.cuda.get_device_name(0))
 
 # dataset
-dataset = load_from_disk("/home/doogunwo/Desktop/tokenized_dataset")
+dataset = load_from_disk("/mnt/nvme/tokenized_dataset")
 dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
 print(f"✅ Dataset loaded: {len(dataset)} samples")
 
@@ -73,7 +73,7 @@ class TimedDataLoader(DataLoader):
 sampler = torch.utils.data.RandomSampler(dataset)
 #sampler = SequentialSampler(dataset)
 batch_sampler = torch.utils.data.BatchSampler(sampler, batch_size=32, drop_last=True)
-dataloader = TimedDataLoader(dataset, batch_sampler=batch_sampler, collate_fn=data_collator)
+dataloader = TimedDataLoader(dataset, batch_sampler=batch_sampler, collate_fn=data_collator, pin_memory=True, num_workers=4)
 
 # optimizer
 optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
