@@ -3,7 +3,7 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -Iinclude -lpthread -ldl -lrt -g
 
 # 라이브러리 디렉토리 설정
-LIB_DIR = /home/doogunwo/tokenizers/tokenizers/tokenizers-cpp/build
+LIB_DIR = ./tokenizers/tokenizers/tokenizers-cpp/build
 LIBS = -L$(LIB_DIR) -ltokenizers_cpp -ltokenizers_c -lpthread -ldl
 
 # 디렉토리 설정
